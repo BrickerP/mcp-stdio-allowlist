@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "description": "Our agent demo policy: read docs only + GET api.github.com. Everything else denied.",
+  "default_deny": true,
+  "tools": [
+    {
+      "name": "filesystem.read",
+      "path_prefixes": ["./docs/**", "docs/**"]
+    },
+    {
+      "name": "http.get",
+      "url_hosts": ["api.github.com"],
+      "methods": ["GET"]
+    }
+  ]
+}

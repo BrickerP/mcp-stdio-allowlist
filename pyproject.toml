@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mcp-stdio-allowlist"
+version = "1.0.0"
+description = "Proxy/guard for MCP stdio tool calls — allowlist + dry-run + side-effect summary in one command."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "Yupeng Lu" }]
+keywords = ["mcp", "stdio", "allowlist", "guardrails", "agents", "dry-run"]
+dependencies = []
+
+[project.urls]
+Homepage = "https://github.com/BrickerP/mcp-stdio-allowlist"
+Hire = "https://brickerp.github.io/hire/"
+
+[project.scripts]
+mcp-stdio-allowlist = "mcp_stdio_allowlist.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
