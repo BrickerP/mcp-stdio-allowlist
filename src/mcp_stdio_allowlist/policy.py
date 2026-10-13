@@ -5,7 +5,7 @@ import json
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlparse
+from urllib.parse import unquote, urlparse
 
 
 @dataclass
@@ -53,30 +53,88 @@ def load_policy(path: Path | str) -> Policy:
     )
 
 
+def _strip_dot_slash(p: str) -> str:
+    """Collapse leading './' segments for comparison. Absolute paths are left unchanged."""
+    if p.startswith("/"):
+        return p
+    while p.startswith("./"):
+        p = p[2:]
+    return p
+
+
+def _normalize_path(path: str) -> str | None:
+    """Lexical normalize for allowlist checks (no filesystem access).
+
+    Returns None when the path is unsafe for matching:
+    - empty after normalize
+    - contains NUL
+    - ``..`` escapes above the path root (absolute or relative)
+    """
+    if "\0" in path:
+        return None
+    # Decode one layer of percent-encoding so %2e%2e / %2f cannot bypass checks.
+    raw = unquote(path.replace("\\", "/"))
+    if "\0" in raw:
+        return None
+
+    is_abs = raw.startswith("/")
+    parts: list[str] = []
+    for seg in raw.split("/"):
+        if seg in ("", "."):
+            continue
+        if seg == "..":
+            if not parts:
+                return None
+            parts.pop()
+            continue
+        parts.append(seg)
+
+    if not parts:
+        return "/" if is_abs else ""
+    norm = "/".join(parts)
+    return "/" + norm if is_abs else norm
+
+
+def _prefix_base(pref: str) -> str:
+    """Return the directory/file base of a path_prefixes entry (no trailing /**)."""
+    p = pref.replace("\\", "/")
+    if p.endswith("/**"):
+        p = p[:-3]
+    p = p.rstrip("/")
+    return _strip_dot_slash(p)
+
+
+def _path_under_prefix(norm: str, base: str) -> bool:
+    """True if *norm* is exactly *base* or a file/dir under it (boundary-safe)."""
+    if not base:
+        # empty base after strip would allow everything — refuse
+        return False
+    if norm == base:
+        return True
+    return norm.startswith(base + "/")
+
+
 def _path_allowed(path: str, prefixes: list[str]) -> bool:
     if not prefixes:
         return True
-    # normalize
-    p = path.replace("\\", "/")
+    norm = _normalize_path(path)
+    if norm is None:
+        return False
+    # Compare without leading ./ so policy "./docs/**" matches "docs/README.md"
+    norm_cmp = _strip_dot_slash(norm)
+    # Absolute request vs relative-only prefixes: only match if some prefix is absolute
     for pref in prefixes:
         pref_n = pref.replace("\\", "/")
-        # support ./docs/** style: treat trailing /** as prefix match under that dir
-        if pref_n.endswith("/**"):
-            base = pref_n[:-3]
-            if p == base.rstrip("/") or p.startswith(base if base.endswith("/") else base + "/"):
-                return True
-            # also allow exact file under base when path is relative like docs/README.md
-            if base.startswith("./"):
-                bare = base[2:]
-                if p == bare.rstrip("/") or p.startswith(bare if bare.endswith("/") else bare + "/"):
-                    return True
-                if p.startswith("./" + bare):
-                    return True
-        else:
-            if p == pref_n or p.startswith(pref_n):
-                return True
-            if pref_n.startswith("./") and (p == pref_n[2:] or p.startswith(pref_n[2:])):
-                return True
+        base = _prefix_base(pref_n)
+        if not base:
+            continue
+        base_abs = base.startswith("/")
+        if norm_cmp.startswith("/") and not base_abs:
+            continue
+        if not norm_cmp.startswith("/") and base_abs:
+            continue
+        if _path_under_prefix(norm_cmp, base):
+            return True
     return False
 
 
