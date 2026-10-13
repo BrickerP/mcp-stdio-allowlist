@@ -48,7 +48,7 @@ What the demo owns end-to-end (our own agent-tool session fixtures):
 
 ## What one run does
 
-1. **Load** a JSON policy allowlist (tool name + optional path / URL-host / method predicates).
+1. **Load** a JSON policy allowlist (tool name + optional path / URL-host / method predicates). Path prefixes are matched after lexical normalize (`.`, `..`, `\\`, one layer of `%2e`/`%2f` decode); `..` that escapes the root is denied, and bare prefixes require a `/` boundary (`docs` allows `docs/a`, not `docs_secret`).
 2. **Replay** a session of MCP-shaped `tools/call` JSON-RPC messages (recorded JSON; no live network).
 3. **Decide** in `dry-run` (report what WOULD happen; execute nothing) or `enforce` (block disallowed).
 4. **Emit** structured side-effect counts: blocked / allowed / would-write / would-fetch / would-exec + per-call rows.

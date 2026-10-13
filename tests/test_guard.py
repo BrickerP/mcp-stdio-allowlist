@@ -97,5 +97,58 @@ class DemoSessionTests(unittest.TestCase):
             self.assertIn("RESULT: PASS", text)
 
 
+
+class PathAllowlistSecurityTests(unittest.TestCase):
+    """Regression: prefix boundary + traversal must not bypass path_prefixes."""
+
+    def setUp(self) -> None:
+        self.policy = load_policy(POLICY)
+
+    def test_docs_readme_still_allowed(self) -> None:
+        ok, reason = evaluate_call(self.policy, "filesystem.read", {"path": "docs/README.md"})
+        self.assertTrue(ok, reason)
+        ok2, _ = evaluate_call(self.policy, "filesystem.read", {"path": "./docs/README.md"})
+        self.assertTrue(ok2)
+
+    def test_deny_traversal_dotdot(self) -> None:
+        for path in (
+            "docs/../../etc/passwd",
+            "./docs/../.env",
+            "docs/../src/mcp_stdio_allowlist/cli.py",
+            "docs/foo/../../../etc/passwd",
+        ):
+            ok, reason = evaluate_call(self.policy, "filesystem.read", {"path": path})
+            self.assertFalse(ok, f"should deny {path!r}: {reason}")
+
+    def test_deny_percent_encoded_traversal(self) -> None:
+        ok, _ = evaluate_call(
+            self.policy, "filesystem.read", {"path": "docs/%2e%2e/%2e%2e/etc/passwd"}
+        )
+        self.assertFalse(ok)
+
+    def test_deny_prefix_boundary_sibling(self) -> None:
+        # Bare prefix "docs" must not match "docs_secret" (startswith without boundary).
+        from mcp_stdio_allowlist.policy import Policy, ToolRule, evaluate_call as ev
+
+        loose = Policy(
+            version=1,
+            description="boundary",
+            tools=[ToolRule(name="filesystem.read", path_prefixes=["docs"])],
+            default_deny=True,
+        )
+        ok_ok, _ = ev(loose, "filesystem.read", {"path": "docs/README.md"})
+        ok_exact, _ = ev(loose, "filesystem.read", {"path": "docs"})
+        ok_bad, reason = ev(loose, "filesystem.read", {"path": "docs_secret/x"})
+        self.assertTrue(ok_ok)
+        self.assertTrue(ok_exact)
+        self.assertFalse(ok_bad, reason)
+
+    def test_deny_nul_and_escape_above_root(self) -> None:
+        from mcp_stdio_allowlist.policy import _path_allowed
+
+        self.assertFalse(_path_allowed("docs/x\0/y", ["docs/**"]))
+        self.assertFalse(_path_allowed("../etc/passwd", ["docs/**"]))
+        self.assertFalse(_path_allowed("/etc/passwd", ["docs/**"]))
+
 if __name__ == "__main__":
     unittest.main()
