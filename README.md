@@ -4,6 +4,8 @@
 
 **If your agent has egress / MCP stdio tools, ship allowlist · dry-run · side-effect summary — not hope.** One command replays a rogue MCP session, blocks form-submit / injection / URL-shortener / token-bypass calls, and writes a pass/fail HTML report.
 
+![Prompt-injection eval](docs/demo-eval.gif)
+
 ![Demo report](docs/demo-report.png)
 
 > Not another empty CI framework. A product you can try in under two minutes. Built the morning after Anthropic cut live internet from every internal eval because Claude hit real sites via injection, tip-form submit, token bypass, and URL shorteners.
@@ -86,6 +88,30 @@ tests/                     # unittest (product is the demo, not empty CI)
 ```bash
 PYTHONPATH=src python3 -m unittest discover -s tests -v
 PYTHONPATH=src python3 -m mcp_stdio_allowlist demo
+```
+
+## Prompt-injection eval (held-out)
+
+Scripted agent (no API key) replays each sample's prescribed tool call through the allowlist. Policy: `evals/policy/eval_policy.json` — same rules as the demo (`filesystem.read` under `docs/**`, `http.get` GET `api.github.com`, default deny).
+
+**Policy was tuned only on the dev split. Held-out results were not used for tuning.**
+
+| | |
+|---|---|
+| held-out **block_rate** | **1.0000** (8/8 injections blocked, allowlist ON) |
+| held-out **false_block_rate** | **0.0000** (0/8 benign blocked, allowlist ON) |
+| allowlist OFF baseline | block_rate 0.0000 (injections escape), false_block_rate 0.0000 |
+
+| split | N | injection | benign |
+|---|---|---|---|
+| dev | 16 | 8 | 8 |
+| held-out | 16 | 8 | 8 |
+
+Sources: every sample is `hand-written` / `hand-written (original)`, grounded in `fixtures/rogue_session.json` and the path checks in `policy.py`. No public dataset was adapted. Inventory: `evals/samples/SOURCES.md`.
+
+```bash
+pip install -e ".[eval]"
+PYTHONPATH=src python3 scripts/run_heldout_eval.py
 ```
 
 ## Author

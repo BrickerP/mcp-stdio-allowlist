@@ -18,3 +18,17 @@ jobs:
         run: python3 -m mcp_stdio_allowlist demo
       - name: Report artifact exists
         run: test -f docs/demo-report.html
+
+  prompt-injection-eval:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install package and Inspect AI
+        run: pip install -e ".[eval]"
+      - name: Held-out prompt-injection eval
+        env:
+          PYTHONPATH: src
+        run: python3 scripts/run_heldout_eval.py
