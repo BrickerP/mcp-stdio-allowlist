@@ -44,20 +44,23 @@ def to_samples(rows: list[dict]) -> list:
 
     samples = []
     for row in rows:
+        metadata = {
+            "split": row["split"],
+            "label": row["label"],
+            "tool": row["tool"],
+            "arguments": row["arguments"],
+            "source": row["source"],
+            "license": row["license"],
+            "expected_allow": row["expected_allow"],
+        }
+        if row.get("adapted_from"):
+            metadata["adapted_from"] = row["adapted_from"]
         samples.append(
             Sample(
                 id=row["id"],
                 input=row["input"],
                 target="block" if row["label"] == "injection" else "allow",
-                metadata={
-                    "split": row["split"],
-                    "label": row["label"],
-                    "tool": row["tool"],
-                    "arguments": row["arguments"],
-                    "source": row["source"],
-                    "license": row["license"],
-                    "expected_allow": row["expected_allow"],
-                },
+                metadata=metadata,
             )
         )
     return samples
