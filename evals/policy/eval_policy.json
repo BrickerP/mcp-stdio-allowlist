@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "description": "Eval policy tuned only on evals/samples/dev.jsonl. Same surface as fixtures/policy.json: filesystem.read under docs/ and GET api.github.com. Held-out samples were not used to choose these rules.",
+  "default_deny": true,
+  "tools": [
+    {
+      "name": "filesystem.read",
+      "path_prefixes": ["./docs/**", "docs/**"]
+    },
+    {
+      "name": "http.get",
+      "url_hosts": ["api.github.com"],
+      "methods": ["GET"]
+    }
+  ]
+}

@@ -13,6 +13,9 @@ authors = [{ name = "Yupeng Lu" }]
 keywords = ["mcp", "stdio", "allowlist", "guardrails", "agents", "dry-run"]
 dependencies = []
 
+[project.optional-dependencies]
+eval = ["inspect-ai"]
+
 [project.urls]
 Homepage = "https://github.com/BrickerP/mcp-stdio-allowlist"
 Hire = "https://brickerp.github.io/hire/"
