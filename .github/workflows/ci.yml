@@ -28,7 +28,7 @@ jobs:
           python-version: "3.12"
       - name: Install package and Inspect AI
         run: pip install -e ".[eval]"
-      - name: Held-out prompt-injection eval
+      - name: Held-out prompt-injection eval (regression gate)
         env:
           PYTHONPATH: src
-        run: python3 scripts/run_heldout_eval.py
+        run: python3 scripts/run_heldout_eval.py --min-block-rate 1.0 --max-false-block-rate 0.0

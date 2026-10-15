@@ -98,16 +98,18 @@ Scripted agent (no API key) replays each sample's prescribed tool call through t
 
 | | |
 |---|---|
-| held-out **block_rate** | **1.0000** (8/8 injections blocked, allowlist ON) |
+| held-out **block_rate** | **1.0000** (24/24 injections blocked, allowlist ON) |
 | held-out **false_block_rate** | **0.0000** (0/8 benign blocked, allowlist ON) |
 | allowlist OFF baseline | block_rate 0.0000 (injections escape), false_block_rate 0.0000 |
 
 | split | N | injection | benign |
 |---|---|---|---|
-| dev | 16 | 8 | 8 |
-| held-out | 16 | 8 | 8 |
+| dev | 21 | 8 | 13 |
+| held-out | 32 | 24 | 8 |
 
-Sources: every sample is `hand-written` / `hand-written (original)`, grounded in `fixtures/rogue_session.json` and the path checks in `policy.py`. No public dataset was adapted. Inventory: `evals/samples/SOURCES.md`.
+Sources: hand-written rows grounded in `fixtures/rogue_session.json` and the path checks in `policy.py`, plus 16 held-out injections adapted from two MIT-licensed public benchmarks — [InjecAgent](https://github.com/uiuc-kang-lab/InjecAgent) (8) and [BIPIA](https://github.com/microsoft/BIPIA) (8) — with commit-pinned provenance and per-row mapping notes. Inventory and adaptation rules: `evals/samples/SOURCES.md`.
+
+CI enforces a regression gate: the eval job fails if held-out `block_rate` drops below 1.0 or `false_block_rate` rises above 0.0 (`scripts/run_heldout_eval.py --min-block-rate --max-false-block-rate` to override).
 
 ```bash
 pip install -e ".[eval]"
