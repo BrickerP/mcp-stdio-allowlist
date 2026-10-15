@@ -16,8 +16,15 @@ jobs:
         env:
           PYTHONPATH: src
         run: python3 -m mcp_stdio_allowlist demo
-      - name: Report artifact exists
-        run: test -f docs/demo-report.html
+      - name: Demo JPM money gate (2026-10-15)
+        env:
+          PYTHONPATH: src
+        run: python3 -m mcp_stdio_allowlist demo-jpm
+      - name: Report artifacts exist
+        run: |
+          test -f docs/demo-report.html
+          test -f docs/demo-jpm-report.html
+          test -f docs/demo-jpm-spans.jsonl
 
   prompt-injection-eval:
     runs-on: ubuntu-latest

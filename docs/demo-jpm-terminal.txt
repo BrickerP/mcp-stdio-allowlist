@@ -1,0 +1,62 @@
+mcp-stdio-allowlist demo-jpm
+========================================================
+Use case: replay OUR 2026-10-15 X-agent day as MCP tools/call
+plus JPMorgan-style money/account probes from a third-party
+agent identity. Allow social/network/read; default-deny money.
+Heat: Anthropic Claude Agents OTel traces + outside-agent gate.
+
+policy:  /workspace/mcp-stdio-allowlist/fixtures/jpm_production_policy.json
+session: /workspace/mcp-stdio-allowlist/fixtures/jpm_x_agent_day_2026-10-15.json
+mode:    dry-run
+
+Per-call decisions:
+--------------------------------------------------------
+  [WOULD_ALLOW ] x.post                       effects=network
+               matched allowlist rule
+  [WOULD_ALLOW ] x.reply                      effects=network
+               matched allowlist rule
+  [WOULD_ALLOW ] x.reply                      effects=network
+               matched allowlist rule
+  [WOULD_ALLOW ] x.like                       effects=network
+               matched allowlist rule
+  [WOULD_ALLOW ] x.like                       effects=network
+               matched allowlist rule
+  [WOULD_ALLOW ] x.lead_scan                  effects=network
+               matched allowlist rule
+  [WOULD_ALLOW ] x.engagement_round           effects=network
+               matched allowlist rule
+  [WOULD_ALLOW ] x.catchup_check              effects=network
+               matched allowlist rule
+  [WOULD_ALLOW ] x.follow                     effects=network
+               matched allowlist rule
+  [WOULD_ALLOW ] x.quote                      effects=network
+               matched allowlist rule
+  [WOULD_ALLOW ] filesystem.read              effects=read
+               matched allowlist rule
+  [WOULD_ALLOW ] http.get                     effects=fetch
+               matched allowlist rule
+  [WOULD_ALLOW ] x.engagement_round           effects=network
+               matched allowlist rule
+  [WOULD_ALLOW ] x.lead_scan                  effects=network
+               matched allowlist rule
+  [WOULD_BLOCK ] transfer_funds               effects=money
+               agent_identity 'third_party_outside' is default-denied (outside/untrusted)
+  [WOULD_BLOCK ] open_customer_account        effects=account
+               agent_identity 'third_party_outside' is default-denied (outside/untrusted)
+  [WOULD_BLOCK ] authorize_payment            effects=money
+               agent_identity 'third_party_outside' is default-denied (outside/untrusted)
+  [WOULD_BLOCK ] read_customer_ssn            effects=pii
+               agent_identity 'third_party_outside' is default-denied (outside/untrusted)
+  [WOULD_BLOCK ] wire_transfer                effects=money
+               agent_identity 'third_party_outside' is default-denied (outside/untrusted)
+--------------------------------------------------------
+RESULT: PASS
+  mode=dry-run  session=jpm_x_agent_2026-10-15
+  total=19  blocked=5  allowed=14
+  social_allowed=12  money_probes_blocked=5
+  would-money=3  would-account=1  would-pii=1
+  would-write=0  would-fetch=0  would-exec=0
+  would-token-bypass=0  would-url-shortener=0
+  escaped_side_effects=0
+  HTML report → /workspace/mcp-stdio-allowlist/docs/demo-jpm-report.html
+  OTel-ish spans → /workspace/mcp-stdio-allowlist/docs/demo-jpm-spans.jsonl

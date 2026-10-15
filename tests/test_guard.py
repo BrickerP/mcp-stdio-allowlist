@@ -152,3 +152,80 @@ class PathAllowlistSecurityTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+JPM_POLICY = ROOT / "fixtures" / "jpm_production_policy.json"
+JPM_SESSION = ROOT / "fixtures" / "jpm_x_agent_day_2026-10-15.json"
+
+
+class JpmMoneyGateTests(unittest.TestCase):
+    """2026-10-15 production social-agent policy: allow social, block money."""
+
+    def setUp(self) -> None:
+        self.policy = load_policy(JPM_POLICY)
+        self.session = load_session(JPM_SESSION)
+
+    def test_allow_social_tools(self) -> None:
+        for tool, args in (
+            ("x.reply", {"text": "hi", "in_reply_to": "1", "_meta": {"agent_identity": "trashConsumer_owned"}}),
+            ("x.like", {"post_id": "1", "_meta": {"agent_identity": "trashConsumer_owned"}}),
+            ("x.post", {"text": "ship", "_meta": {"agent_identity": "trashConsumer_owned"}}),
+            ("x.lead_scan", {"slot": "18:10", "_meta": {"agent_identity": "trashConsumer_owned"}}),
+            ("filesystem.read", {"path": "docs/demo-report.html", "_meta": {"agent_identity": "trashConsumer_owned"}}),
+            ("http.get", {"url": "https://api.x.com/2/users/me", "method": "GET", "_meta": {"agent_identity": "trashConsumer_owned"}}),
+        ):
+            ok, reason = evaluate_call(self.policy, tool, args)
+            self.assertTrue(ok, f"{tool}: {reason}")
+
+    def test_block_money_probes(self) -> None:
+        for tool, args in (
+            ("transfer_funds", {"from_account": "a", "to_account": "b", "amount_usd": 1}),
+            ("open_customer_account", {"customer_id": "c", "product": "brokerage"}),
+            ("authorize_payment", {"merchant": "m", "amount_usd": 1}),
+            ("read_customer_ssn", {"customer_id": "c"}),
+            ("wire_transfer", {"iban": "XX", "amount_usd": 1}),
+        ):
+            args = {**args, "_meta": {"agent_identity": "third_party_outside"}}
+            ok, reason = evaluate_call(self.policy, tool, args)
+            self.assertFalse(ok, f"{tool} should block")
+            self.assertTrue(
+                "not in allowlist" in reason or "default-denied" in reason,
+                reason,
+            )
+
+    def test_deny_third_party_identity_even_on_social(self) -> None:
+        ok, reason = evaluate_call(
+            self.policy,
+            "x.reply",
+            {"text": "hi", "in_reply_to": "1", "_meta": {"agent_identity": "third_party_outside"}},
+        )
+        self.assertFalse(ok)
+        self.assertIn("default-denied", reason)
+
+    def test_money_side_effect_tags(self) -> None:
+        self.assertIn("money", classify_side_effects("transfer_funds", {"amount_usd": 1}))
+        self.assertIn("account", classify_side_effects("open_customer_account", {"customer_id": "c"}))
+        self.assertIn("pii", classify_side_effects("read_customer_ssn", {"customer_id": "c"}))
+        self.assertIn("network", classify_side_effects("x.reply", {"text": "x"}))
+
+    def test_jpm_session_dry_run_pass(self) -> None:
+        summary = run_session(self.policy, self.session, mode="dry-run")
+        self.assertEqual(summary.total, 19)
+        self.assertEqual(summary.blocked, 5)
+        self.assertEqual(summary.allowed, 14)
+        self.assertEqual(summary.money_probes_blocked, 5)
+        self.assertGreaterEqual(summary.social_allowed, 10)
+        self.assertEqual(summary.escaped_side_effects, 0)
+        self.assertTrue(summary.passed)
+        money_tools = {
+            "transfer_funds",
+            "open_customer_account",
+            "authorize_payment",
+            "read_customer_ssn",
+            "wire_transfer",
+        }
+        for r in summary.rows:
+            if r.tool in money_tools:
+                self.assertEqual(r.decision, "WOULD_BLOCK", r.tool)
+            else:
+                self.assertEqual(r.decision, "WOULD_ALLOW", r.tool)

@@ -112,14 +112,16 @@ def write_report(summary: GuardSummary, out_path: Path, title: str = "mcp-stdio-
   <div class="hero">
     <h1>{_esc(title)} <span class="badge {overall_cls}">{overall}</span></h1>
     <p class="muted">session <code>{_esc(summary.session_name)}</code> · mode <code>{_esc(summary.mode)}</code> · { _esc(now) }</p>
-    <p>PASS = zero escaped side effects under the demo policy (rogue mutating calls blocked; intended reads allowed).</p>
+    <p>PASS = zero escaped side effects (money/account/PII and other dangerous calls blocked; intended social/read tools allowed).</p>
     <div class="metrics">
       <div class="metric"><div class="n">{summary.total}</div><div class="l">total calls</div></div>
       <div class="metric bad"><div class="n">{summary.blocked}</div><div class="l">blocked</div></div>
       <div class="metric ok"><div class="n">{summary.allowed}</div><div class="l">allowed</div></div>
+      <div class="metric ok"><div class="n">{summary.social_allowed}</div><div class="l">social allowed</div></div>
+      <div class="metric bad"><div class="n">{summary.money_probes_blocked}</div><div class="l">money blocked</div></div>
       <div class="metric warn"><div class="n">{summary.would_write}</div><div class="l">would-write</div></div>
       <div class="metric warn"><div class="n">{summary.would_fetch}</div><div class="l">would-fetch</div></div>
-      <div class="metric warn"><div class="n">{summary.would_exec}</div><div class="l">would-exec</div></div>
+      <div class="metric warn"><div class="n">{summary.would_money}</div><div class="l">would-money</div></div>
       <div class="metric {'ok' if summary.escaped_side_effects == 0 else 'bad'}"><div class="n">{summary.escaped_side_effects}</div><div class="l">escaped</div></div>
     </div>
   </div>
@@ -143,7 +145,7 @@ def write_report(summary: GuardSummary, out_path: Path, title: str = "mcp-stdio-
     return out_path
 
 
-def summary_text(summary: GuardSummary) -> str:
+def summary_text(summary: GuardSummary, *, jpm: bool = False) -> str:
     status = "PASS" if summary.passed else "FAIL"
     lines = [
         f"RESULT: {status}",
@@ -153,4 +155,47 @@ def summary_text(summary: GuardSummary) -> str:
         f"  would-token-bypass={summary.would_token_bypass}  would-url-shortener={summary.would_url_shortener}",
         f"  escaped_side_effects={summary.escaped_side_effects}",
     ]
+    if jpm or summary.money_probes_blocked or summary.would_money or summary.social_allowed:
+        lines.insert(
+            3,
+            f"  social_allowed={summary.social_allowed}  money_probes_blocked={summary.money_probes_blocked}",
+        )
+        lines.insert(
+            4,
+            f"  would-money={summary.would_money}  would-account={summary.would_account}  would-pii={summary.would_pii}",
+        )
     return "\n".join(lines)
+
+
+def write_spans_jsonl(summary: GuardSummary, out_path: Path) -> Path:
+    """Minimal OpenTelemetry-inspired decision trace (stdlib only, no OTel SDK)."""
+    out_path = Path(out_path)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    now = datetime.now(timezone.utc)
+    lines: list[str] = []
+    for i, r in enumerate(summary.rows):
+        ts = None
+        meta = (r.arguments or {}).get("_meta") or {}
+        if isinstance(meta, dict):
+            ts = meta.get("ts")
+        span = {
+            "name": f"mcp.tools.call/{r.tool}",
+            "trace_id": f"demo-{summary.session_name}",
+            "span_id": f"span-{r.id}",
+            "parent_span_id": "session-root",
+            "timestamp": ts or now.isoformat().replace("+00:00", "Z"),
+            "attributes": {
+                "mcp.tool": r.tool,
+                "mcp.decision": r.decision,
+                "mcp.side_effects": list(r.side_effects),
+                "mcp.reason": r.reason,
+                "mcp.escaped": r.escaped,
+                "mcp.call_id": r.id,
+                "agent.identity": (meta.get("agent_identity") if isinstance(meta, dict) else None),
+            },
+            "status": "OK" if r.decision in ("ALLOWED", "WOULD_ALLOW", "BLOCKED", "WOULD_BLOCK") and not r.escaped else "ERROR",
+            "seq": i + 1,
+        }
+        lines.append(json.dumps(span, ensure_ascii=False))
+    out_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return out_path

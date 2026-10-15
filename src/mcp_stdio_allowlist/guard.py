@@ -6,7 +6,7 @@ from typing import Any, Literal
 
 from .policy import Policy, evaluate_call
 from .session import Session, ToolCall
-from .side_effects import classify_side_effects, is_mutating
+from .side_effects import classify_side_effects, is_dangerous, is_mutating
 
 Mode = Literal["enforce", "dry-run"]
 
@@ -39,6 +39,11 @@ class GuardSummary:
     would_exec: int = 0
     would_token_bypass: int = 0
     would_url_shortener: int = 0
+    would_money: int = 0
+    would_account: int = 0
+    would_pii: int = 0
+    social_allowed: int = 0
+    money_probes_blocked: int = 0
     escaped_side_effects: int = 0
     rows: list[CallResult] = field(default_factory=list)
 
@@ -94,7 +99,7 @@ def guard_call(policy: Policy, call: ToolCall, mode: Mode) -> CallResult:
             side_effects=sorted(tags),
             decision=decision,
             note=call.note,
-            escaped=escaped and not _read_only_allowed(tags),
+            escaped=escaped and not _intentional_allow(tags),
         )
     return CallResult(
         id=call.id,
@@ -112,7 +117,14 @@ def guard_call(policy: Policy, call: ToolCall, mode: Mode) -> CallResult:
 
 def _read_only_allowed(tags: set[str]) -> bool:
     """filesystem.read / http.get alone are intentional allowlist hits, not escapes."""
-    return tags <= {"read", "fetch"} and "write" not in tags and "exec" not in tags and "token_bypass" not in tags and "url_shortener" not in tags
+    return tags <= {"read", "fetch"} and not is_dangerous(tags)
+
+
+def _intentional_allow(tags: set[str]) -> bool:
+    """Allowlisted social network tools and read/fetch are intentional, not escapes."""
+    if "network" in tags and tags <= {"network"}:
+        return True
+    return _read_only_allowed(tags)
 
 
 def run_session(policy: Policy, session: Session, mode: Mode = "dry-run") -> GuardSummary:
@@ -143,8 +155,24 @@ def run_session(policy: Policy, session: Session, mode: Mode = "dry-run") -> Gua
                     summary.would_token_bypass += 1
                 if "url_shortener" in tags:
                     summary.would_url_shortener += 1
-            # escaped = mutating call that policy would allow (policy hole)
-            if row.would_allow and is_mutating(tags) and not _read_only_allowed(tags):
+                if "money" in tags:
+                    summary.would_money += 1
+                    summary.money_probes_blocked += 1
+                if "account" in tags:
+                    summary.would_account += 1
+                    if "money" not in tags and "pii" not in tags:
+                        summary.money_probes_blocked += 1
+                if "pii" in tags:
+                    summary.would_pii += 1
+                    if "money" not in tags:
+                        summary.money_probes_blocked += 1
+            if row.would_allow and "network" in tags:
+                summary.social_allowed += 1
+            elif row.would_allow and _intentional_allow(tags):
+                # reads / allowlisted fetch also count toward "allowed social day" narrative via allowed
+                pass
+            # escaped = dangerous/mutating call that policy would allow (policy hole)
+            if row.would_allow and is_mutating(tags) and not _intentional_allow(tags):
                 summary.escaped_side_effects += 1
                 row.escaped = True
             else:
@@ -165,6 +193,19 @@ def run_session(policy: Policy, session: Session, mode: Mode = "dry-run") -> Gua
                     summary.would_token_bypass += 1
                 if "url_shortener" in tags:
                     summary.would_url_shortener += 1
+                if "money" in tags:
+                    summary.would_money += 1
+                    summary.money_probes_blocked += 1
+                if "account" in tags:
+                    summary.would_account += 1
+                    if "money" not in tags and "pii" not in tags:
+                        summary.money_probes_blocked += 1
+                if "pii" in tags:
+                    summary.would_pii += 1
+                    if "money" not in tags:
+                        summary.money_probes_blocked += 1
+            if row.allowed and "network" in tags:
+                summary.social_allowed += 1
             if row.escaped:
                 summary.escaped_side_effects += 1
 

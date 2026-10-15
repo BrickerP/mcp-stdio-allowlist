@@ -8,7 +8,7 @@ from pathlib import Path
 
 from .guard import run_session
 from .policy import load_policy
-from .report import summary_text, write_report
+from .report import summary_text, write_report, write_spans_jsonl
 from .session import load_session
 
 
@@ -48,6 +48,51 @@ def cmd_demo(args: argparse.Namespace) -> int:
     print(summary_text(summary))
     write_report(summary, report_path, title="mcp-stdio-allowlist · rogue session dry-run")
     print(f"  HTML report → {report_path}")
+    return 0 if summary.passed else 1
+
+
+def cmd_demo_jpm(args: argparse.Namespace) -> int:
+    """Dry-run our 2026-10-15 X-agent day + JPMorgan-style money probes."""
+    root = _repo_root()
+    policy_path = Path(args.policy) if args.policy else root / "fixtures" / "jpm_production_policy.json"
+    session_path = (
+        Path(args.session) if args.session else root / "fixtures" / "jpm_x_agent_day_2026-10-15.json"
+    )
+    report_path = Path(args.report) if args.report else root / "docs" / "demo-jpm-report.html"
+    spans_path = Path(args.spans) if getattr(args, "spans", None) else root / "docs" / "demo-jpm-spans.jsonl"
+
+    print("mcp-stdio-allowlist demo-jpm")
+    print("=" * 56)
+    print("Use case: replay OUR 2026-10-15 X-agent day as MCP tools/call")
+    print("plus JPMorgan-style money/account probes from a third-party")
+    print("agent identity. Allow social/network/read; default-deny money.")
+    print("Heat: Anthropic Claude Agents OTel traces + outside-agent gate.")
+    print()
+    print(f"policy:  {policy_path}")
+    print(f"session: {session_path}")
+    print(f"mode:    dry-run")
+    print()
+
+    policy = load_policy(policy_path)
+    session = load_session(session_path)
+    summary = run_session(policy, session, mode="dry-run")
+
+    print("Per-call decisions:")
+    print("-" * 56)
+    for r in summary.rows:
+        se = ",".join(r.side_effects)
+        print(f"  [{r.decision:12}] {r.tool:28} effects={se}")
+        print(f"               {r.reason}")
+    print("-" * 56)
+    print(summary_text(summary, jpm=True))
+    write_report(
+        summary,
+        report_path,
+        title="mcp-stdio-allowlist · JPM money gate · 2026-10-15 X-agent day",
+    )
+    write_spans_jsonl(summary, spans_path)
+    print(f"  HTML report → {report_path}")
+    print(f"  OTel-ish spans → {spans_path}")
     return 0 if summary.passed else 1
 
 
@@ -195,7 +240,14 @@ def cmd_proxy(args: argparse.Namespace) -> int:
     return 0
 
 
+def _dispatch_demo(args: argparse.Namespace) -> int:
+    if getattr(args, "scenario", "classic") == "jpm":
+        return cmd_demo_jpm(args)
+    return cmd_demo(args)
+
+
 def build_parser() -> argparse.ArgumentParser:
+
     p = argparse.ArgumentParser(
         prog="mcp_stdio_allowlist",
         description=(
@@ -209,7 +261,23 @@ def build_parser() -> argparse.ArgumentParser:
     d.add_argument("--policy", default=None)
     d.add_argument("--session", default=None)
     d.add_argument("--report", default=None)
-    d.set_defaults(func=cmd_demo)
+    d.add_argument(
+        "--scenario",
+        choices=["classic", "jpm"],
+        default="classic",
+        help="classic=rogue Anthropic mirror; jpm=2026-10-15 X-agent + money gate",
+    )
+    d.set_defaults(func=_dispatch_demo)
+
+    dj = sub.add_parser(
+        "demo-jpm",
+        help="Dry-run our 2026-10-15 X-agent day + JPMorgan-style money probes",
+    )
+    dj.add_argument("--policy", default=None)
+    dj.add_argument("--session", default=None)
+    dj.add_argument("--report", default=None)
+    dj.add_argument("--spans", default=None)
+    dj.set_defaults(func=cmd_demo_jpm)
 
     r = sub.add_parser("run", help="Run allowlist against a recorded session")
     r.add_argument("--policy", required=True)

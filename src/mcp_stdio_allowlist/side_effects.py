@@ -47,12 +47,75 @@ TOKEN_BYPASS_MARKERS = (
     "skip_auth",
     "impersonate",
 )
+# JPMorgan-style money / account / PII side effects (default-deny in production)
+MONEY_MARKERS = (
+    "transfer_funds",
+    "wire_transfer",
+    "authorize_payment",
+    "payment",
+    "funds",
+    "wire",
+    " ACH",
+    "ach_",
+    "settle",
+    "disburse",
+)
+ACCOUNT_MARKERS = (
+    "open_customer_account",
+    "customer_account",
+    "open_account",
+    "close_account",
+    "account_create",
+)
+PII_MARKERS = (
+    "read_customer_ssn",
+    "customer_ssn",
+    "ssn",
+    "tax_id",
+    "passport_number",
+)
+# Owned social-agent tools: intentional network side effects under an allowlist
+SOCIAL_NETWORK_PREFIXES = (
+    "x.",
+    "twitter.",
+    "social.",
+)
 
 
 def classify_side_effects(tool: str, arguments: dict[str, Any]) -> set[str]:
-    """Return a set of side-effect tags: write, fetch, exec, token_bypass, read."""
+    """Return a set of side-effect tags: write, fetch, exec, token_bypass, read, network, money, account, pii."""
     name = tool.lower()
     tags: set[str] = set()
+
+    if name.startswith(SOCIAL_NETWORK_PREFIXES) or any(name.startswith(p) for p in SOCIAL_NETWORK_PREFIXES):
+        tags.add("network")
+        # social tools are intentional egress under policy; do not also tag as write/fetch
+        # unless they also match classic mutating markers below via odd naming
+        return tags
+
+    for m in MONEY_MARKERS:
+        if m.strip().lower() in name:
+            tags.add("money")
+            break
+    for m in ACCOUNT_MARKERS:
+        if m.lower() in name:
+            tags.add("account")
+            break
+    for m in PII_MARKERS:
+        if m.lower() in name:
+            tags.add("pii")
+            break
+    # argument hints for money/account
+    arg_blob = " ".join(str(v).lower() for v in arguments.values() if not isinstance(v, dict))
+    arg_keys = " ".join(str(k).lower() for k in arguments.keys())
+    if any(k in arg_keys for k in ("amount_usd", "iban", "from_account", "to_account", "instrument")):
+        if "money" not in tags and ("transfer" in name or "payment" in name or "wire" in name or "authorize" in name):
+            tags.add("money")
+    if "customer_id" in arg_keys and ("account" in name or "ssn" in name):
+        if "ssn" in name:
+            tags.add("pii")
+        elif "account" in name:
+            tags.add("account")
 
     for m in WRITE_MARKERS:
         if m in name:
@@ -101,4 +164,21 @@ def classify_side_effects(tool: str, arguments: dict[str, Any]) -> set[str]:
 
 
 def is_mutating(tags: set[str]) -> bool:
-    return bool(tags & {"write", "fetch", "exec", "token_bypass", "url_shortener"})
+    return bool(
+        tags
+        & {
+            "write",
+            "fetch",
+            "exec",
+            "token_bypass",
+            "url_shortener",
+            "money",
+            "account",
+            "pii",
+        }
+    )
+
+
+def is_dangerous(tags: set[str]) -> bool:
+    """Side effects that must never slip through a production money/account gate."""
+    return bool(tags & {"money", "account", "pii", "exec", "token_bypass", "url_shortener"})

@@ -48,6 +48,43 @@ What the demo owns end-to-end (our own agent-tool session fixtures):
 
 ![Terminal demo](docs/demo-terminal.png)
 
+
+## JPMorgan-style money gate demo (2026-10-15)
+
+Production agents need two things at once: **observe every tool turn** (Anthropic Claude Agents OpenTelemetry traces, public beta) and **default-deny money/account side effects** for third-party / untrusted agent identity (the JPMorgan outside-agent account gate).
+
+This demo replays **our own 2026-10-15 X-agent day** as MCP-shaped `tools/call` messages (post / reply / like / follow / quote / lead_scan / engagement_round / catchup + reads), then injects five synthetic money/account/PII probes from a `third_party_outside` identity. Stdlib only — no API keys, no network.
+
+```bash
+PYTHONPATH=src python3 -m mcp_stdio_allowlist demo-jpm
+# equivalent: PYTHONPATH=src python3 -m mcp_stdio_allowlist demo --scenario jpm
+```
+
+```
+RESULT: PASS
+  mode=dry-run  session=jpm_x_agent_2026-10-15
+  total=19  blocked=5  allowed=14
+  social_allowed=12  money_probes_blocked=5
+  would-money=3  would-account=1  would-pii=1
+  would-write=0  would-fetch=0  would-exec=0
+  would-token-bypass=0  would-url-shortener=0
+  escaped_side_effects=0
+```
+
+Open `docs/demo-jpm-report.html`. Decision spans (OTel-inspired, stdlib JSONL): `docs/demo-jpm-spans.jsonl`.
+
+| decision | tools |
+|---|---|
+| WOULD_ALLOW | `x.post` `x.reply` `x.like` `x.follow` `x.quote` `x.lead_scan` `x.engagement_round` `x.catchup_check` `filesystem.read` `http.get` |
+| WOULD_BLOCK | `transfer_funds` `open_customer_account` `authorize_payment` `read_customer_ssn` `wire_transfer` (identity + default-deny) |
+
+![JPM demo report](docs/demo-jpm-report.png)
+
+![JPM terminal](docs/demo-jpm-terminal.png)
+
+Why a stranger tries it tomorrow: one command proves your agent can still post/like while money/account tools from an outside identity never leave dry-run.
+
+
 ## What one run does
 
 1. **Load** a JSON policy allowlist (tool name + optional path / URL-host / method predicates). Path prefixes are matched after lexical normalize (`.`, `..`, `\\`, one layer of `%2e`/`%2f` decode); `..` that escapes the root is denied, and bare prefixes require a `/` boundary (`docs` allows `docs/a`, not `docs_secret`).
@@ -78,7 +115,7 @@ PYTHONPATH=src python3 -m mcp_stdio_allowlist proxy \
 
 ```
 src/mcp_stdio_allowlist/   # policy · session · guard · side_effects · report · cli
-fixtures/                  # our demo policy + rogue MCP session
+fixtures/                  # classic rogue session + JPM 2026-10-15 X-agent day
 docs/                      # demo HTML + screenshots from our run
 tests/                     # unittest (product is the demo, not empty CI)
 ```
@@ -88,6 +125,7 @@ tests/                     # unittest (product is the demo, not empty CI)
 ```bash
 PYTHONPATH=src python3 -m unittest discover -s tests -v
 PYTHONPATH=src python3 -m mcp_stdio_allowlist demo
+PYTHONPATH=src python3 -m mcp_stdio_allowlist demo-jpm
 ```
 
 ## Prompt-injection eval (held-out)

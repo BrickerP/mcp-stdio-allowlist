@@ -1,0 +1,53 @@
+{
+  "version": 1,
+  "description": "Production social-agent policy (2026-10-15): allow our owned X-agent network/read tools; default-deny money/account/PII. Third-party / outside agent identities are denied even if a tool were listed.",
+  "default_deny": true,
+  "denied_agent_identities": [
+    "third_party_outside",
+    "untrusted_vendor",
+    "outside_ai_agent"
+  ],
+  "tools": [
+    {
+      "name": "x.post",
+      "arg_keys": ["text"]
+    },
+    {
+      "name": "x.reply",
+      "arg_keys": ["text", "in_reply_to"]
+    },
+    {
+      "name": "x.like",
+      "arg_keys": ["post_id"]
+    },
+    {
+      "name": "x.follow",
+      "arg_keys": ["user"]
+    },
+    {
+      "name": "x.quote",
+      "arg_keys": ["text", "quoted_id"]
+    },
+    {
+      "name": "x.lead_scan",
+      "arg_keys": ["slot"]
+    },
+    {
+      "name": "x.engagement_round",
+      "arg_keys": ["slot"]
+    },
+    {
+      "name": "x.catchup_check",
+      "arg_keys": []
+    },
+    {
+      "name": "filesystem.read",
+      "path_prefixes": ["./docs/**", "docs/**", "./actions_log.jsonl", "actions_log.jsonl"]
+    },
+    {
+      "name": "http.get",
+      "url_hosts": ["api.x.com", "api.twitter.com", "api.github.com"],
+      "methods": ["GET"]
+    }
+  ]
+}

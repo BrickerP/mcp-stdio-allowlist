@@ -24,6 +24,7 @@ class Policy:
     description: str
     tools: list[ToolRule]
     default_deny: bool = True
+    denied_agent_identities: list[str] = field(default_factory=list)
 
     def find(self, tool_name: str) -> ToolRule | None:
         for t in self.tools:
@@ -50,6 +51,9 @@ def load_policy(path: Path | str) -> Policy:
         description=str(data.get("description") or ""),
         tools=tools,
         default_deny=bool(data.get("default_deny", True)),
+        denied_agent_identities=[
+            str(x) for x in (data.get("denied_agent_identities") or [])
+        ],
     )
 
 
@@ -153,8 +157,19 @@ def _host_allowed(url: str, hosts: list[str]) -> bool:
     return False
 
 
+def _agent_identity(arguments: dict[str, Any]) -> str:
+    meta = arguments.get("_meta") or arguments.get("meta") or {}
+    if isinstance(meta, dict):
+        return str(meta.get("agent_identity") or meta.get("identity") or "")
+    return str(arguments.get("agent_identity") or "")
+
+
 def evaluate_call(policy: Policy, tool_name: str, arguments: dict[str, Any]) -> tuple[bool, str]:
     """Return (allowed, reason)."""
+    identity = _agent_identity(arguments)
+    if identity and policy.denied_agent_identities and identity in policy.denied_agent_identities:
+        return False, f"agent_identity '{identity}' is default-denied (outside/untrusted)"
+
     rule = policy.find(tool_name)
     if rule is None:
         if policy.default_deny:
